@@ -1,0 +1,1008 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  User, Lock, Bell, Home, Wrench, Zap, DollarSign, 
+  LogOut, Plus, CheckCircle, Clock, AlertCircle, 
+  Menu, X, Trash2, Edit3, UserCheck, Shield, LogIn, Users, Phone, Briefcase, Calculator,
+  Upload, Image as ImageIcon, QrCode, Check, XCircle, Eye, AlertTriangle, ExternalLink
+} from 'lucide-react';
+
+// --- Firebase Imports ---
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, collection, addDoc, getDocs, doc, deleteDoc, updateDoc, onSnapshot, query, orderBy, where 
+} from "firebase/firestore";
+
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCJ9BPmBi4xbL44dIb1vdknzpNN-RP6NlU",
+  authDomain: "sankhaburi-living-os.firebaseapp.com",
+  projectId: "sankhaburi-living-os",
+  storageBucket: "sankhaburi-living-os.firebasestorage.app",
+  messagingSenderId: "389433953086",
+  appId: "1:389433953086:web:627ebc1ab4cb3524b57a6f"
+};
+
+// --- SETTINGS: ตั้งค่ารูป QR Code ---
+// ลิงก์ไฟล์ Google Drive ต้นฉบับ (สำหรับปุ่มเปิดดู)
+const GOOGLE_DRIVE_LINK = "https://drive.google.com/file/d/1dMLiMatjf0vb98pK4Mch2cD89VUU9YjK/view?usp=sharing";
+// ลิงก์สำหรับแสดงผลในเว็บ (Direct Image Link)
+const HOSPITAL_QR_CODE = "https://drive.google.com/uc?export=view&id=1dMLiMatjf0vb98pK4Mch2cD89VUU9YjK";
+
+// Initialize Firebase
+let app, db;
+try {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+} catch (e) {
+  console.error("Firebase init error:", e);
+}
+
+// --- Helper Components ---
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-4 ${className}`}>{children}</div>
+);
+
+const Badge = ({ status }) => {
+  const styles = {
+    paid: "bg-green-100 text-green-700 border border-green-200",
+    unpaid: "bg-red-100 text-red-700 border border-red-200",
+    pending_review: "bg-orange-100 text-orange-700 border border-orange-200",
+    pending: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+    fixing: "bg-blue-100 text-blue-700 border border-blue-200",
+    done: "bg-green-100 text-green-700 border border-green-200"
+  };
+  const labels = {
+    paid: "ชำระแล้ว",
+    unpaid: "รอชำระ",
+    pending_review: "รอตรวจสอบ",
+    pending: "รอดำเนินการ",
+    fixing: "กำลังซ่อม",
+    done: "เสร็จสิ้น"
+  };
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[status] || "bg-gray-100"}`}>
+      {labels[status] || status}
+    </span>
+  );
+};
+
+// --- Sub-Components ---
+
+const LoginView = ({ loginUser, setLoginUser, loginPass, setLoginPass, handleLogin, error }) => (
+  <div className="flex flex-col items-center justify-center py-10 px-4 h-full">
+    <Card className="w-full p-6 border border-blue-100 shadow-md">
+      <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="text-blue-600 w-8 h-8" />
+          </div>
+        <h2 className="text-2xl font-bold text-gray-800">เข้าสู่ระบบ</h2>
+        <p className="text-gray-500 text-sm">กรุณาล็อกอินเพื่อเข้าถึงข้อมูลส่วนตัว</p>
+      </div>
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ใช้งาน (Username)</label>
+          <div className="relative">
+            <User className="absolute left-3 top-2.5 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              value={loginUser}
+              onChange={(e) => setLoginUser(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              placeholder="Username"
+              required
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-2.5 text-gray-400 w-5 h-5" />
+            <input
+              type="password"
+              value={loginPass}
+              onChange={(e) => setLoginPass(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              placeholder="Password"
+              required
+            />
+          </div>
+        </div>
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        <button
+          type="submit"
+          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-semibold shadow-sm"
+        >
+          เข้าสู่ระบบ
+        </button>
+      </form>
+      <div className="mt-6 text-xs text-gray-400 text-center space-y-1">
+          <p>Super Admin (ฉุกเฉิน): admin / admin</p>
+      </div>
+    </Card>
+  </div>
+);
+
+const Navbar = ({ activeTab, setActiveTab, user, handleLogout, isMobileMenuOpen, setIsMobileMenuOpen }) => (
+  <nav className="bg-blue-600 text-white shadow-md sticky top-0 z-50">
+    <div className="w-full px-4">
+      <div className="flex justify-between items-center h-14">
+        <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setActiveTab('home')}>
+          <Home className="w-5 h-5" />
+          <span className="font-bold text-base truncate">Sankhaburi Living</span>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-1 focus:outline-none">
+              {isMobileMenuOpen ? <X className="w-6 h-6"/> : <Menu className="w-6 h-6"/>}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {isMobileMenuOpen && (
+      <div className="bg-blue-700 px-4 py-2 space-y-2 pb-4 shadow-inner absolute w-full z-50">
+          {user ? (
+              <div className="pb-2 border-b border-blue-500 mb-2 pt-2">
+                  <div className="flex items-center space-x-3">
+                      <div className="bg-blue-500 p-2 rounded-full">
+                          <User className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                          <div className="text-sm font-bold text-white">{user.name}</div>
+                          <div className="text-xs text-blue-200">{user.role === 'admin' ? 'ผู้ดูแลระบบ' : (user.room || 'ไม่ระบุห้อง')}</div>
+                      </div>
+                  </div>
+              </div>
+          ) : null}
+          
+          <button onClick={() => { setActiveTab('home'); setIsMobileMenuOpen(false); }} className={`flex items-center w-full text-left py-2 px-2 rounded ${activeTab === 'home' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}>
+              <Bell className="w-4 h-4 mr-3" /> ข่าวสาร
+          </button>
+          <button onClick={() => { setActiveTab('bills'); setIsMobileMenuOpen(false); }} className={`flex items-center w-full text-left py-2 px-2 rounded ${activeTab === 'bills' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}>
+              <DollarSign className="w-4 h-4 mr-3" /> ค่าใช้จ่าย
+          </button>
+          <button onClick={() => { setActiveTab('repair'); setIsMobileMenuOpen(false); }} className={`flex items-center w-full text-left py-2 px-2 rounded ${activeTab === 'repair' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}>
+              <Wrench className="w-4 h-4 mr-3" /> แจ้งซ่อม
+          </button>
+          {user?.role === 'admin' && (
+              <button onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }} className={`flex items-center w-full text-left py-2 px-2 rounded text-yellow-300 font-semibold ${activeTab === 'admin' ? 'bg-blue-800' : 'hover:bg-blue-600'}`}>
+                  <Shield className="w-4 h-4 mr-3" /> Admin Panel
+              </button>
+          )}
+          
+          {user ? (
+              <button onClick={handleLogout} className="flex items-center w-full text-left py-2 px-2 text-red-200 hover:bg-blue-800 rounded mt-2">
+                  <LogOut className="w-4 h-4 mr-3" /> ออกจากระบบ
+              </button>
+          ) : (
+              <button onClick={() => { setActiveTab('login'); setIsMobileMenuOpen(false); }} className="flex items-center justify-center w-full text-center py-2 bg-white text-blue-600 rounded-lg font-bold mt-2 shadow-sm">
+                  <LogIn className="w-4 h-4 mr-2" /> เข้าสู่ระบบ
+              </button>
+          )}
+      </div>
+    )}
+  </nav>
+);
+
+const NewsFeed = ({ news }) => (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between mb-2">
+      <h2 className="text-lg font-bold text-gray-800 flex items-center">
+          <Bell className="mr-2 text-blue-600 w-5 h-5" /> ข่าวประชาสัมพันธ์
+      </h2>
+    </div>
+    {news.length === 0 ? <div className="text-center text-gray-500 mt-4">ยังไม่มีประกาศข่าวสาร</div> : null}
+    {news.map(item => (
+      <Card key={item.id} className="border-l-4 border-blue-500 hover:shadow-md transition">
+        <div className="flex justify-between items-start">
+          <h3 className="font-bold text-base text-gray-800">{item.title}</h3>
+          <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full whitespace-nowrap ml-2">{item.date}</span>
+        </div>
+        <p className="text-sm text-gray-600 mt-2 leading-relaxed">{item.content}</p>
+        <div className="mt-3 text-xs text-gray-400 flex items-center border-t pt-2">
+           โดย: {item.author}
+        </div>
+      </Card>
+    ))}
+  </div>
+);
+
+// Payment Modal Component (User Side)
+const PaymentModal = ({ bill, onClose, onConfirm }) => {
+  const [slipImage, setSlipImage] = useState(null);
+  const [imgError, setImgError] = useState(false);
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      // Limit file size to 1MB to prevent Firestore limits (since we store as Base64)
+      if (file.size > 1024 * 1024) {
+          alert("ไฟล์รูปภาพต้องมีขนาดไม่เกิน 1MB");
+          return;
+      }
+
+      // Convert to Base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+          setSlipImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (!slipImage) {
+      alert("กรุณาแนบรูปสลิปการโอนเงิน");
+      return;
+    }
+    onConfirm(bill.id, slipImage);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="bg-blue-600 p-4 flex justify-between items-center text-white">
+          <h3 className="font-bold text-lg flex items-center"><QrCode className="w-5 h-5 mr-2" /> สแกนจ่าย</h3>
+          <button onClick={onClose} className="hover:bg-blue-700 p-1 rounded"><X className="w-6 h-6" /></button>
+        </div>
+        
+        <div className="p-6 overflow-y-auto flex-1">
+          <div className="text-center mb-4">
+            <p className="text-gray-500 text-sm">ยอดที่ต้องชำระ</p>
+            <p className="text-3xl font-bold text-blue-600">{bill.total.toLocaleString()} บาท</p>
+          </div>
+
+          <div className="flex justify-center mb-6">
+            <div className="p-2 border-2 border-blue-100 rounded-lg bg-white relative min-h-[250px] w-full flex flex-col items-center justify-center overflow-hidden">
+                {!imgError ? (
+                    <img 
+                        src={HOSPITAL_QR_CODE} 
+                        alt="Hospital QR Code" 
+                        className="w-full h-full object-contain" 
+                        onError={() => setImgError(true)}
+                    />
+                ) : (
+                    <div className="text-center p-4 w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                        <ImageIcon className="w-10 h-10 text-gray-400 mb-2"/>
+                        <p className="text-sm text-gray-500 font-medium">ไม่สามารถโหลดรูป QR Code ได้</p>
+                        <p className="text-xs text-gray-400 mb-3">กรุณากดปุ่มด้านล่างเพื่อเปิดรูปต้นฉบับ</p>
+                        <a 
+                            href={GOOGLE_DRIVE_LINK} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="text-xs bg-blue-600 text-white px-4 py-2 rounded-full flex items-center hover:bg-blue-700 transition shadow-sm"
+                        >
+                            <ExternalLink className="w-3 h-3 mr-1" /> เปิดรูป QR Code
+                        </a>
+                    </div>
+                )}
+            </div>
+          </div>
+          
+          <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-center mb-6">
+             <p className="text-xs text-yellow-800 font-semibold">⚠️ กรุณาระบุยอดเงิน {bill.total.toLocaleString()} บาท ด้วยตนเอง</p>
+             <p className="text-[10px] text-yellow-600">สแกน QR Code หรือเปิดรูปต้นฉบับเพื่อชำระเงิน</p>
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">แนบหลักฐานการโอน (สลิป)</label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 cursor-pointer relative">
+               {slipImage ? (
+                   <div className="relative w-full">
+                       <img src={slipImage} alt="Slip Preview" className="mx-auto h-32 object-contain" />
+                       <button 
+                        onClick={() => setSlipImage(null)}
+                        className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-full shadow-sm"
+                       >
+                           <X className="w-4 h-4"/>
+                       </button>
+                   </div>
+               ) : (
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600 justify-center">
+                      <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
+                        <span>เลือกรูปภาพ</span>
+                        <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" onChange={handleFileChange} />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG, GIF (Max 1MB)</p>
+                  </div>
+               )}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t bg-gray-50">
+           <button 
+            onClick={handleConfirm}
+            className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md flex justify-center items-center"
+           >
+               <CheckCircle className="w-5 h-5 mr-2" /> ยืนยันการชำระเงิน
+           </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const BillsView = ({ bills, user, payBill }) => {
+  const [selectedBill, setSelectedBill] = useState(null);
+  // Match bills by username
+  const myBills = bills.filter(b => b.username === user.username).sort((a,b) => b.createdAt - a.createdAt);
+  
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-gray-800 flex items-center">
+          <DollarSign className="mr-2 text-green-600 w-5 h-5" /> รายการค่าใช้จ่าย
+      </h2>
+      {myBills.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+              <CheckCircle className="w-12 h-12 mb-2 opacity-50" />
+              <span>ไม่มีรายการค้างชำระ</span>
+          </div>
+      ) : (
+          myBills.map(bill => (
+          <Card key={bill.id} className="relative overflow-hidden">
+              <div className="flex justify-between items-start mb-3">
+                  <div>
+                      <div className="text-xs text-gray-500">รอบบิล</div>
+                      <div className="font-bold text-lg text-blue-900">{bill.month}</div>
+                  </div>
+                  <Badge status={bill.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100">
+                  <div>
+                      <p className="text-xs text-gray-500">ค่าไฟ ({bill.elecUnit} หน่วย)</p>
+                      <p className="font-semibold text-gray-700">{bill.elecUnit * bill.elecRate} ฿</p>
+                      <p className="text-[10px] text-gray-400">(เรท {bill.elecRate} บ./หน่วย)</p>
+                  </div>
+                  <div>
+                      <p className="text-xs text-gray-500">ค่าส่วนกลาง</p>
+                      <p className="font-semibold text-gray-700">{bill.commonFee} ฿</p>
+                  </div>
+              </div>
+              <div className="flex justify-between items-center border-t pt-3">
+                  <div>
+                      <p className="text-xs text-gray-500">ยอดรวมทั้งสิ้น</p>
+                      <span className="font-bold text-xl text-gray-800">{bill.total.toLocaleString()} ฿</span>
+                  </div>
+                  {bill.status === 'unpaid' && (
+                      <button 
+                          onClick={() => setSelectedBill(bill)}
+                          className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 shadow-sm active:scale-95 transition-transform flex items-center"
+                      >
+                          <QrCode className="w-4 h-4 mr-1" /> ชำระเงิน
+                      </button>
+                  )}
+              </div>
+          </Card>
+          ))
+      )}
+
+      {selectedBill && (
+          <PaymentModal 
+            bill={selectedBill} 
+            onClose={() => setSelectedBill(null)} 
+            onConfirm={(billId, slip) => {
+                payBill(billId, slip);
+                setSelectedBill(null);
+            }}
+          />
+      )}
+    </div>
+  );
+};
+
+const RepairView = ({ repairs, user, submitRepair }) => {
+  const [issue, setIssue] = useState('');
+  const [location, setLocation] = useState(user.room || '');
+  
+  useEffect(() => {
+    if (user && user.room) setLocation(user.room);
+  }, [user]);
+
+  const myRepairs = repairs.filter(r => r.username === user.username).sort((a,b) => b.createdAt - a.createdAt);
+
+  const handleSubmit = (e) => {
+      e.preventDefault();
+      submitRepair(issue, location);
+      setIssue('');
+      alert('ส่งคำร้องเรียบร้อยแล้ว');
+  };
+
+  return (
+      <div className="space-y-6">
+          <Card>
+              <h3 className="font-bold text-lg mb-4 flex items-center text-gray-800">
+                  <Wrench className="mr-2 text-orange-500 w-5 h-5" /> แจ้งซ่อมบำรุง
+              </h3>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">ปัญหาที่พบ</label>
+                      <input 
+                          required
+                          type="text" 
+                          className="w-full border-b-2 border-gray-200 py-2 focus:border-blue-500 outline-none bg-transparent transition-colors"
+                          placeholder="เช่น ไฟห้องน้ำดับ"
+                          value={issue}
+                          onChange={e => setIssue(e.target.value)}
+                      />
+                  </div>
+                  <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">สถานที่/ห้อง</label>
+                      <input 
+                          required
+                          type="text" 
+                          className="w-full border-b-2 border-gray-200 py-2 focus:border-blue-500 outline-none bg-transparent transition-colors"
+                          value={location}
+                          onChange={e => setLocation(e.target.value)}
+                      />
+                  </div>
+                  <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-transform">ส่งแจ้งซ่อม</button>
+              </form>
+          </Card>
+
+          <div>
+              <h3 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">ประวัติการแจ้งซ่อม</h3>
+              {myRepairs.map(repair => (
+                  <div key={repair.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-3">
+                      <div className="flex justify-between items-start mb-2">
+                          <span className="font-semibold text-gray-800">{repair.issue}</span>
+                          <Badge status={repair.status} />
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center space-x-4">
+                          <span className="flex items-center"><Home className="w-3 h-3 mr-1"/> {repair.location}</span>
+                          <span className="flex items-center"><Clock className="w-3 h-3 mr-1"/> {repair.date}</span>
+                      </div>
+                  </div>
+              ))}
+          </div>
+      </div>
+  );
+};
+
+// Admin Sub-Components
+const NewsManager = ({ news, addNews, deleteNews }) => {
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    
+    const handlePost = (e) => {
+        e.preventDefault();
+        addNews(title, content);
+        setTitle('');
+        setContent('');
+    };
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <h3 className="font-bold mb-4">ประกาศข่าวสารใหม่</h3>
+                <form onSubmit={handlePost} className="space-y-3">
+                    <input className="w-full border p-2 rounded text-sm" placeholder="หัวข้อข่าว" value={title} onChange={e => setTitle(e.target.value)} required />
+                    <textarea className="w-full border p-2 rounded h-24 text-sm" placeholder="เนื้อหา..." value={content} onChange={e => setContent(e.target.value)} required />
+                    <button className="bg-blue-600 text-white px-4 py-2 rounded w-full text-sm font-bold">ประกาศ</button>
+                </form>
+            </Card>
+            <div className="space-y-2">
+                <h3 className="font-bold text-gray-600 text-sm">รายการข่าวปัจจุบัน</h3>
+                {news.map(n => (
+                    <div key={n.id} className="bg-white p-3 rounded shadow-sm border flex justify-between items-center">
+                        <span className="text-sm truncate w-4/5">{n.title}</span>
+                        <button onClick={() => deleteNews(n.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const UserManager = ({ users, addUser, deleteUser }) => {
+    const [formData, setFormData] = useState({
+        username: '', password: '', name: '', room: '', department: '', phone: '', role: 'user'
+    });
+
+    const handleChange = (e) => {
+        setFormData({...formData, [e.target.name]: e.target.value});
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        // Check for duplicate username
+        if (users.some(u => u.username === formData.username)) {
+            alert('Username นี้มีผู้ใช้งานแล้ว');
+            return;
+        }
+        addUser(formData);
+        setFormData({ username: '', password: '', name: '', room: '', department: '', phone: '', role: 'user' });
+    };
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <h3 className="font-bold mb-4 flex items-center"><Plus className="w-4 h-4 mr-2"/> เพิ่มข้อมูลผู้เข้าพัก</h3>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                         <input className="border p-2 rounded text-sm" placeholder="Username" name="username" value={formData.username} onChange={handleChange} required />
+                         <input className="border p-2 rounded text-sm" placeholder="Password" name="password" value={formData.password} onChange={handleChange} required />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                         <input className="border p-2 rounded text-sm w-full" placeholder="ชื่อ-นามสกุล" name="name" value={formData.name} onChange={handleChange} required />
+                         <select className="border p-2 rounded text-sm w-full" name="role" value={formData.role} onChange={handleChange}>
+                             <option value="user">ผู้เข้าพัก (User)</option>
+                             <option value="admin">ผู้ดูแลระบบ (Admin)</option>
+                         </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <input className="border p-2 rounded text-sm" placeholder="เลขห้อง (เช่น A-101)" name="room" value={formData.room} onChange={handleChange} required />
+                        <input className="border p-2 rounded text-sm" placeholder="แผนก" name="department" value={formData.department} onChange={handleChange} />
+                    </div>
+                    <input className="w-full border p-2 rounded text-sm" placeholder="เบอร์โทรศัพท์" name="phone" value={formData.phone} onChange={handleChange} />
+                    <button className="bg-green-600 text-white px-4 py-2 rounded w-full text-sm font-bold">บันทึกข้อมูล</button>
+                </form>
+            </Card>
+
+            <div className="space-y-2">
+                <h3 className="font-bold text-gray-600 text-sm">รายชื่อผู้เข้าพัก ({users.length})</h3>
+                {users.map(u => (
+                    <div key={u.id} className="bg-white p-3 rounded shadow-sm border space-y-2">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <div className="font-bold text-sm text-blue-900">{u.name} {u.role === 'admin' && <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full ml-1">Admin</span>}</div>
+                                <div className="text-xs text-gray-500 font-semibold mt-1">ห้อง: {u.room}</div>
+                            </div>
+                            <button onClick={() => deleteUser(u.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1 rounded"><Trash2 size={16}/></button>
+                        </div>
+                        <div className="grid grid-cols-2 text-xs text-gray-500 gap-1 border-t pt-2">
+                            <div className="flex items-center"><Briefcase className="w-3 h-3 mr-1"/> {u.department || '-'}</div>
+                            <div className="flex items-center"><Phone className="w-3 h-3 mr-1"/> {u.phone || '-'}</div>
+                            <div className="col-span-2 text-gray-400 font-mono">User: {u.username} | Pass: {u.password}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Modal for checking slip
+const SlipCheckModal = ({ bill, onClose, onApprove, onReject }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90vh]">
+                <div className="bg-gray-800 text-white p-4 flex justify-between items-center rounded-t-xl">
+                    <h3 className="font-bold">ตรวจสอบหลักฐานการโอน</h3>
+                    <button onClick={onClose}><X /></button>
+                </div>
+                <div className="p-4 overflow-y-auto flex-1 bg-gray-100 flex justify-center">
+                    {bill.slip ? (
+                        <img src={bill.slip} alt="Slip" className="max-w-full h-auto object-contain rounded shadow" />
+                    ) : (
+                        <div className="text-gray-400 py-10">ไม่พบรูปภาพสลิป</div>
+                    )}
+                </div>
+                <div className="p-4 bg-white border-t rounded-b-xl space-y-2">
+                    <div className="text-center mb-2">
+                        <p className="text-sm text-gray-500">ยอดที่ต้องชำระ</p>
+                        <p className="text-xl font-bold">{bill.total.toLocaleString()} บาท</p>
+                        <p className="text-xs text-gray-400">จากห้อง: {bill.username}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => onReject(bill.id)} className="flex items-center justify-center bg-red-100 text-red-700 py-2 rounded-lg font-semibold hover:bg-red-200">
+                            <XCircle className="w-4 h-4 mr-1" /> ปฏิเสธ
+                        </button>
+                        <button onClick={() => onApprove(bill.id)} className="flex items-center justify-center bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700">
+                            <Check className="w-4 h-4 mr-1" /> อนุมัติยอด
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const BillManager = ({ users, bills, createBill, approveBill, rejectBill }) => {
+    const [selectedUsername, setSelectedUsername] = useState('');
+    const [month, setMonth] = useState('');
+    const [units, setUnits] = useState('');
+    const [rate, setRate] = useState('5');
+    const [fee, setFee] = useState('300');
+    const [checkBill, setCheckBill] = useState(null); // For modal
+
+    const calcTotal = ((parseFloat(units) || 0) * (parseFloat(rate) || 0)) + (parseFloat(fee) || 0);
+
+    const handleCreate = (e) => {
+        e.preventDefault();
+        if (!selectedUsername) {
+            alert('กรุณาเลือกผู้พักอาศัย');
+            return;
+        }
+        createBill(selectedUsername, month, units, rate, fee);
+        alert('สร้างบิลเรียบร้อย');
+        setUnits('');
+    };
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <h3 className="font-bold mb-4">ออกบิลค่าใช้จ่าย</h3>
+                <form onSubmit={handleCreate} className="space-y-3">
+                    <select className="w-full border p-2 rounded text-sm" value={selectedUsername} onChange={e => setSelectedUsername(e.target.value)}>
+                        <option value="">-- เลือกผู้พักอาศัย --</option>
+                        {users.map(u => (
+                            <option key={u.id} value={u.username}>{u.room} - {u.name}</option>
+                        ))}
+                    </select>
+                    <input className="w-full border p-2 rounded text-sm" placeholder="ระบุเดือน (เช่น ต.ค. 66)" value={month} onChange={e => setMonth(e.target.value)} required />
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <label className="text-xs text-gray-500">จำนวนหน่วยไฟ</label>
+                            <input className="border p-2 rounded text-sm w-full" type="number" placeholder="หน่วย" value={units} onChange={e => setUnits(e.target.value)} required />
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-500">ค่าไฟต่อหน่วย</label>
+                            <input className="border p-2 rounded text-sm w-full" type="number" placeholder="บาท" value={rate} onChange={e => setRate(e.target.value)} required />
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label className="text-xs text-gray-500">ค่าส่วนกลาง</label>
+                        <input className="border p-2 rounded text-sm w-full" type="number" placeholder="ค่าส่วนกลาง" value={fee} onChange={e => setFee(e.target.value)} required />
+                    </div>
+
+                    <div className="bg-blue-50 p-3 rounded text-sm space-y-1">
+                        <div className="flex justify-between text-gray-600">
+                            <span>ค่าไฟ ({units || 0} x {rate || 0})</span>
+                            <span>{((parseFloat(units) || 0) * (parseFloat(rate) || 0)).toLocaleString()} บ.</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                            <span>ส่วนกลาง</span>
+                            <span>{(parseFloat(fee) || 0).toLocaleString()} บ.</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-blue-900 border-t pt-1 mt-1">
+                            <span>ยอดรวมสุทธิ</span>
+                            <span>{calcTotal.toLocaleString()} บ.</span>
+                        </div>
+                    </div>
+
+                    <button className="bg-green-600 text-white px-4 py-2 rounded w-full text-sm font-bold">บันทึกและส่งบิล</button>
+                </form>
+            </Card>
+            
+            <div className="bg-white rounded shadow overflow-x-auto">
+                <table className="w-full text-xs text-left whitespace-nowrap">
+                    <thead className="bg-gray-100 text-gray-600 uppercase">
+                        <tr>
+                            <th className="p-3">ห้อง</th>
+                            <th className="p-3">เดือน</th>
+                            <th className="p-3">ยอด</th>
+                            <th className="p-3">สถานะ</th>
+                            <th className="p-3">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {bills.map(b => {
+                            // Find user data from users list by matching username
+                            const u = users.find(user => user.username === b.username);
+                            return (
+                                <tr key={b.id} className="border-b">
+                                    <td className="p-3">{u?.room || b.username}</td>
+                                    <td className="p-3">{b.month}</td>
+                                    <td className="p-3">{b.total.toLocaleString()}</td>
+                                    <td className="p-3"><Badge status={b.status}/></td>
+                                    <td className="p-3">
+                                        {b.status === 'pending_review' && (
+                                            <button 
+                                                onClick={() => setCheckBill(b)}
+                                                className="bg-blue-500 text-white p-1 rounded hover:bg-blue-600 flex items-center text-[10px]"
+                                            >
+                                                <Eye className="w-3 h-3 mr-1" /> ตรวจสอบ
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                </table>
+            </div>
+
+            {checkBill && (
+                <SlipCheckModal 
+                    bill={checkBill} 
+                    onClose={() => setCheckBill(null)}
+                    onApprove={(id) => { approveBill(id); setCheckBill(null); }}
+                    onReject={(id) => { rejectBill(id); setCheckBill(null); }}
+                />
+            )}
+        </div>
+    );
+};
+
+const RepairManager = ({ repairs, users, updateRepairStatus }) => {
+    return (
+        <div className="space-y-4">
+             <h3 className="font-bold mb-2">จัดการการแจ้งซ่อม</h3>
+             {repairs.map(r => {
+                 const u = users.find(user => user.username === r.username);
+                 return (
+                    <Card key={r.id}>
+                        <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <div className="font-bold text-base">{r.issue}</div>
+                                    <div className="text-sm text-gray-500">{u?.room || r.username} ({u?.name || '-'})</div>
+                                </div>
+                                <Badge status={r.status} />
+                            </div>
+                            <div className="text-xs text-gray-400">{r.date}</div>
+                            <div className="flex gap-2 mt-2 pt-2 border-t">
+                                {r.status === 'pending' && (
+                                    <button onClick={() => updateRepairStatus(r.id, 'fixing')} className="flex-1 text-xs bg-blue-600 text-white px-2 py-2 rounded hover:bg-blue-700">รับเรื่อง</button>
+                                )}
+                                {r.status === 'fixing' && (
+                                    <button onClick={() => updateRepairStatus(r.id, 'done')} className="flex-1 text-xs bg-green-600 text-white px-2 py-2 rounded hover:bg-green-700">เสร็จสิ้น</button>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
+                 );
+             })}
+        </div>
+    )
+};
+
+const AdminPanel = ({ 
+    users, news, bills, repairs, 
+    addNews, deleteNews, addUser, deleteUser, createBill, updateRepairStatus, approveBill, rejectBill 
+}) => {
+    const [adminTab, setAdminTab] = useState('news');
+
+    return (
+        <div className="space-y-4">
+            <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+                <button onClick={() => setAdminTab('news')} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${adminTab === 'news' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 border'}`}>จัดการข่าว</button>
+                <button onClick={() => setAdminTab('users')} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${adminTab === 'users' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 border'}`}>ผู้เข้าพัก</button>
+                <button onClick={() => setAdminTab('bills')} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${adminTab === 'bills' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 border'}`}>ออกบิล</button>
+                <button onClick={() => setAdminTab('repairs')} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${adminTab === 'repairs' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 border'}`}>แจ้งซ่อม</button>
+            </div>
+            
+            {adminTab === 'news' && <NewsManager news={news} addNews={addNews} deleteNews={deleteNews} />}
+            {adminTab === 'users' && <UserManager users={users} addUser={addUser} deleteUser={deleteUser} />}
+            {adminTab === 'bills' && <BillManager users={users} bills={bills} createBill={createBill} approveBill={approveBill} rejectBill={rejectBill} />}
+            {adminTab === 'repairs' && <RepairManager repairs={repairs} users={users} updateRepairStatus={updateRepairStatus} />}
+        </div>
+    );
+};
+
+// --- Main Application ---
+
+export default function App() {
+  // State
+  const [user, setUser] = useState(null); // Current logged in user (Plain Object from Firestore)
+  
+  const [users, setUsers] = useState([]);
+  const [news, setNews] = useState([]);
+  const [bills, setBills] = useState([]);
+  const [repairs, setRepairs] = useState([]);
+  
+  // Login Form State
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [error, setError] = useState('');
+
+  // UI State
+  const [activeTab, setActiveTab] = useState('home'); 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // --- Real-time Data Listeners ---
+  useEffect(() => {
+    if (!db) return; 
+
+    // 1. Listen to News
+    const unsubNews = onSnapshot(query(collection(db, "news"), orderBy("date", "desc")), (snapshot) => {
+        setNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 2. Listen to Users
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+        setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 3. Listen to Bills
+    const unsubBills = onSnapshot(collection(db, "bills"), (snapshot) => {
+        setBills(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 4. Listen to Repairs
+    const unsubRepairs = onSnapshot(collection(db, "repairs"), (snapshot) => {
+        setRepairs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+        unsubNews();
+        unsubUsers();
+        unsubBills();
+        unsubRepairs();
+    }
+  }, [db]);
+
+  // --- Actions ---
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!db) {
+        alert("ยังไม่ได้เชื่อมต่อ Firebase");
+        return;
+    }
+
+    // Hardcode Backdoor for Admin Setup
+    if(loginUser === 'admin' && loginPass === 'admin') {
+        setUser({ username: 'admin', name: 'Super Admin', role: 'admin' });
+        setError('');
+        if (activeTab === 'login') setActiveTab('home');
+        return;
+    }
+
+    // Normal Login Check against Firestore Users collection
+    try {
+        const q = query(
+            collection(db, "users"), 
+            where("username", "==", loginUser),
+            where("password", "==", loginPass)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+            setUser(querySnapshot.docs[0].data());
+            setError('');
+            if (activeTab === 'login') setActiveTab('home');
+        } else {
+            setError('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง');
+        }
+    } catch (err) {
+        console.error(err);
+        setError('เกิดข้อผิดพลาดในการล็อกอิน');
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setLoginUser('');
+    setLoginPass('');
+    setActiveTab('home');
+    setIsMobileMenuOpen(false);
+  };
+
+  const addNews = async (title, content) => {
+    await addDoc(collection(db, "news"), {
+      title,
+      content,
+      date: new Date().toISOString().split('T')[0],
+      author: 'Admin',
+      createdAt: Date.now()
+    });
+  };
+
+  const deleteNews = async (id) => {
+    await deleteDoc(doc(db, "news", id));
+  };
+
+  const createBill = async (username, month, elecUnit, elecRate, commonFee) => {
+    const unitVal = parseFloat(elecUnit) || 0;
+    const rateVal = parseFloat(elecRate) || 0;
+    const feeVal = parseFloat(commonFee) || 0;
+    const total = (unitVal * rateVal) + feeVal;
+    
+    await addDoc(collection(db, "bills"), {
+      username, // Link by username
+      month,
+      elecUnit: unitVal,
+      elecRate: rateVal,
+      commonFee: feeVal,
+      total,
+      status: 'unpaid',
+      createdAt: Date.now()
+    });
+  };
+
+  const updateRepairStatus = async (id, newStatus) => {
+    await updateDoc(doc(db, "repairs", id), { status: newStatus });
+  };
+
+  const addUser = async (userData) => {
+    await addDoc(collection(db, "users"), userData);
+  };
+
+  const deleteUser = async (id) => {
+      if(confirm('ยืนยันการลบข้อมูล?')) {
+          await deleteDoc(doc(db, "users", id));
+      }
+  };
+
+  const submitRepair = async (issue, location) => {
+    await addDoc(collection(db, "repairs"), {
+      username: user.username,
+      issue,
+      location,
+      status: 'pending',
+      date: new Date().toISOString().split('T')[0],
+      createdAt: Date.now()
+    });
+  };
+
+  const payBill = async (id, slipImage) => {
+    // Save base64 image directly to Firestore 'slip' field
+    await updateDoc(doc(db, "bills", id), { 
+        status: 'pending_review',
+        slip: slipImage
+    });
+    alert('แจ้งชำระเงินเรียบร้อย กรุณารอเจ้าหน้าที่ตรวจสอบ');
+  };
+
+  const approveBill = async (id) => {
+      await updateDoc(doc(db, "bills", id), { status: 'paid' });
+  };
+
+  const rejectBill = async (id) => {
+      if(confirm('ยืนยันการปฏิเสธยอด (สถานะจะกลับเป็นรอชำระ)?')) {
+          await updateDoc(doc(db, "bills", id), { status: 'unpaid', slip: null });
+      }
+  };
+
+  // --- Render Logic ---
+
+  return (
+    <div className="min-h-screen bg-gray-200 flex justify-center font-sans">
+        {/* Mobile Container Simulator */}
+        <div className="w-full max-w-md bg-gray-50 min-h-screen shadow-2xl relative flex flex-col">
+            <Navbar 
+                activeTab={activeTab} 
+                setActiveTab={setActiveTab} 
+                user={user} 
+                handleLogout={handleLogout} 
+                isMobileMenuOpen={isMobileMenuOpen} 
+                setIsMobileMenuOpen={setIsMobileMenuOpen} 
+            />
+            
+            <main className="flex-1 p-4 pb-20 overflow-y-auto">
+                {activeTab === 'home' && <NewsFeed news={news} />}
+                
+                {activeTab !== 'home' && !user && (
+                    <LoginView 
+                        loginUser={loginUser}
+                        setLoginUser={setLoginUser}
+                        loginPass={loginPass}
+                        setLoginPass={setLoginPass}
+                        handleLogin={handleLogin}
+                        error={error}
+                    />
+                )}
+                
+                {activeTab === 'bills' && user && <BillsView bills={bills} user={user} payBill={payBill} />}
+                {activeTab === 'repair' && user && <RepairView repairs={repairs} user={user} submitRepair={submitRepair} />}
+                
+                {activeTab === 'admin' && user?.role === 'admin' && (
+                    <AdminPanel 
+                        users={users} 
+                        news={news} 
+                        bills={bills} 
+                        repairs={repairs} 
+                        addNews={addNews}
+                        deleteNews={deleteNews}
+                        addUser={addUser}
+                        deleteUser={deleteUser}
+                        createBill={createBill}
+                        updateRepairStatus={updateRepairStatus}
+                        approveBill={approveBill}
+                        rejectBill={rejectBill}
+                    />
+                )}
+            </main>
+        </div>
+    </div>
+  );
+}
